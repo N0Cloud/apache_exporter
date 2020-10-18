@@ -4,20 +4,21 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 const (
@@ -339,6 +340,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	return
 }
 
+func listen(addr string) (net.Listener, error) {
+	if strings.HasPrefix(addr, "unix:") {
+		return net.Listen("unix", addr[5:])
+	} else {
+		return net.Listen("tcp", addr)
+	}
+}
+
 func main() {
 
 	// Parse flags
@@ -382,5 +391,15 @@ func main() {
 			 </body>
 			 </html>`))
 	})
-	log.Fatal(http.ListenAndServe(*listeningAddress, nil))
+
+	srv := &http.Server{
+		Handler: http.DefaultServeMux,
+	}
+	l, err := listen(*listeningAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer l.Close()
+
+	log.Fatal(srv.Serve(l))
 }
